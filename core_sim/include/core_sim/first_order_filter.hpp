@@ -48,6 +48,8 @@ class FirstOrderFilter {
 
   void SetInput(T input) { input_ = input; }
 
+  void SetOutput(T output) { output_ = output; }
+  
   T GetInput() const { return input_; }
 
   T GetOutput() const { return output_; }

@@ -985,6 +985,103 @@ class Drone(object):
         imu_data = self.client.request(imu_data_req)
         return imu_data
 
+    def ASS_spoof_gps_sensor(self, sensor_name: str, pos: dict):
+        """Spoof GPS sensor with fake position and velocity data
+        
+        Args:
+            sensor_name (str): Name of the GPS sensor to spoof
+            msDelay (int): Delay in milliseconds before applying spoof
+            mode (str): Spoofing mode ('direct', 'gradual', etc.)
+            pos (dict): Dictionary containing latitude, longitude, altitude, vel_x, vel_y, vel_z
+            
+        Returns:
+            bool: True if spoofing was successful
+        """
+            
+        spoof_req = {
+            "method": f"{self.sensors[sensor_name]['gps']}/spoof",
+            "params": {
+                "latitude": pos.get('latitude', 0.0),
+                "longitude": pos.get('longitude', 0.0), 
+                "altitude": pos.get('altitude', 0.0),
+                "vel_x": pos.get('vel_x', 0.0),
+                "vel_y": pos.get('vel_y', 0.0),
+                "vel_z": pos.get('vel_z', 0.0)
+            },
+            "version": 1.0,
+        }
+        result = self.client.request(spoof_req)
+        if result:
+            projectairsim_log().warning(f"GPS sensor '{sensor_name}' spoofed: lat={pos.get('latitude')}, lon={pos.get('longitude')}, alt={pos.get('altitude')}")
+        return result
+    
+    def ASS_disable_spoof_gps_sensor(self, sensor_name: str):
+        """Disable GPS sensor spoofing and return to normal operation
+        
+        Args:
+            sensor_name (str): Name of the GPS sensor to clear spoofing
+            
+        Returns:
+            bool: True if clearing spoof was successful
+        """
+        clear_req = {
+            "method": f"{self.sensors[sensor_name]['gps']}/clearspoof",
+            "params": {},
+            "version": 1.0,
+        }
+        result = self.client.request(clear_req)
+        if result:
+            projectairsim_log().info(f"GPS sensor '{sensor_name}' spoofing cleared")
+        return result
+
+    def ASS_disable_gps_sensor_config(self, sensor_name: str):
+        """Send request to disable GPS sensor at simulator level
+
+        Args:
+            sensor_name (str): Name of the GPS sensor to disable
+            msDelay (int): Delay in milliseconds before disabling the sensor
+            callback (callable): callback to invoke on command completion or error
+        
+        Returns:
+            asyncio.Task: An awaitable task wrapping the async coroutine
+        """
+        disable_req = {
+            "method": f"{self.sensors[sensor_name]['gps']}/disable",
+            "params": {},
+            "version": 1.0,
+        }
+
+        response = self.client.request(disable_req)
+        return response
+    
+    def ASS_enable_gps_sensor_config(self, sensor_name: str) -> bool:
+        """Send request to enable GPS sensor at simulator level
+
+        Args:
+            sensor_name (str): Name of the GPS sensor to enable
+        
+        Returns:
+            bool: Success status
+        """
+        enable_req = {
+            "method": f"{self.sensors[sensor_name]['gps']}/enable",
+            "params": {},
+            "version": 1.0,
+        }
+
+        response = self.client.request(enable_req)
+        return response
+
+    def apply_noise_gps(self, sensor_name: str, noise_level: float):
+        enable_req = {
+            "method": f"{self.sensors[sensor_name]['gps']}/ApplyNoiseModel",
+            "params": {"noise_level": noise_level},
+            "version": 1.0,
+        }
+
+        response = self.client.request(enable_req)
+        return response
+
     def get_gps_data(self, sensor_name: str) -> Dict:
         """Get latest GPS sensor data
 
@@ -994,6 +1091,7 @@ class Drone(object):
         Returns:
             Dict: GPSData as a dict
         """
+        
         gps_data_req = {
             "method": f"{self.sensors[sensor_name]['gps']}",
             "params": {},

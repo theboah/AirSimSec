@@ -102,6 +102,10 @@ class Gps::Impl : public SensorImpl {
 
   void RegisterServiceMethod();
 
+  bool disableSensor();
+  
+  bool enableSensor();
+
   void OnEndUpdate() override;
 
  private:
@@ -124,7 +128,7 @@ class Gps::Impl : public SensorImpl {
 
   TimeNano last_update_time_;
 
-  GpsData output_;  // To hold latest sensor data
+  GpsData output_;
 };
 
 Gps::Gps() : Sensor(std::shared_ptr<SensorImpl>(nullptr)) {}
@@ -172,7 +176,7 @@ Gps::Impl::Impl(const std::string& id, bool is_enabled,
     : SensorImpl(SensorType::kGps, id, is_enabled, parent_link,
                  Constant::Component::gps, logger, topic_manager,
                  parent_topic_path, service_manager, state_manager),
-      loader_(*this) {
+      loader_(*this){
   SetTopicPath();
   CreateTopics();
 }
@@ -214,27 +218,31 @@ void Gps::Impl::OnBeginUpdate() {
 void Gps::Impl::Update(const TimeNano sim_time, const TimeNano sim_dt_nanos) {
   std::lock_guard<std::mutex> lock(update_lock_);
 
-  auto current_time = sim_time;
+  // If GPS sensor is disabled, don't update or publish
+  if (!is_enabled_) {
+    return;
+  }
 
+  auto current_time = sim_time;
   TimeSec dt = sim_dt_nanos / 1.0e9;
 
   output_.time_stamp = current_time;
-  output_.time_utc_millis =
-      static_cast<uint64_t>(current_time / 1.0e3);  // in millisec
+  output_.time_utc_millis = static_cast<uint64_t>(current_time / 1.0e3);
+  
   output_.geo_point = ground_truth_.environment->env_info.geo_point;
   output_.velocity = ground_truth_.kinematics->twist.linear;
 
-  //! Apply filter order filter for HDOP & VDOP & update GPS fix type
+  // Apply filter order filter for HDOP & VDOP & update GPS fix type
   ApplyNoiseModel(output_, dt);
 
-  //! Prepare GPS sensor msg to publish
+  // Prepare GPS sensor msg to publish
   GpsMessage gps_msg(output_.time_stamp, output_.time_utc_millis,
                      output_.geo_point.latitude, output_.geo_point.longitude,
                      output_.geo_point.altitude, output_.epv, output_.eph,
                      output_.position_cov_type, output_.fix_type,
                      output_.velocity);
 
-  //! Publish GPS sensor output msg
+  // Publish GPS sensor output msg
   topic_manager_.PublishTopic(gps_topic_, (Message&)gps_msg);
 }
 
@@ -253,6 +261,21 @@ void Gps::Impl::ApplyNoiseModel(GpsData& gps_data, const TimeSec& dt) {
 }
 
 GpsMessage Gps::Impl::getOutput() {
+  // If GPS sensor is disabled, return a message indicating no fix
+  if (!is_enabled_) {
+    GpsData disabled_output = {};
+    disabled_output.fix_type = GnssFixType::GNSS_FIX_NO_FIX;
+    disabled_output.nav_sat_status.status = NavSatStatusType::STATUS_NO_FIX;
+    disabled_output.eph = 999.9f;  // Maximum dilution when disabled
+    disabled_output.epv = 999.9f;
+    
+    return GpsMessage(disabled_output.time_stamp, disabled_output.time_utc_millis,
+                      disabled_output.geo_point.latitude, disabled_output.geo_point.longitude,
+                      disabled_output.geo_point.altitude, disabled_output.epv, disabled_output.eph,
+                      disabled_output.position_cov_type, disabled_output.fix_type,
+                      disabled_output.velocity);
+  }
+  
   return GpsMessage(output_.time_stamp, output_.time_utc_millis,
                     output_.geo_point.latitude, output_.geo_point.longitude,
                     output_.geo_point.altitude, output_.epv, output_.eph,
@@ -268,6 +291,39 @@ void Gps::Impl::RegisterServiceMethod() {
   auto get_gps_data_handler =
       get_gps_data.CreateMethodHandler(&Gps::Impl::getOutput, *this);
   service_manager_.RegisterMethod(get_gps_data, get_gps_data_handler);
+
+  auto disable_method_name = unique_method_name + "/" + "disable";
+  auto disable_gps = ServiceMethod(disable_method_name, {""});
+  auto disable_gps_handler =
+      disable_gps.CreateMethodHandler(&Gps::Impl::disableSensor, *this);
+  service_manager_.RegisterMethod(disable_gps, disable_gps_handler);
+
+  auto enable_method_name = unique_method_name + "/" + "enable";
+  auto enable_gps = ServiceMethod(enable_method_name, {""});
+  auto enable_gps_handler =
+      enable_gps.CreateMethodHandler(&Gps::Impl::enableSensor, *this);
+  service_manager_.RegisterMethod(enable_gps, enable_gps_handler);
+
+  auto apply_noise_method_name = unique_method_name + "/" + "ApplyNoiseModel";
+auto apply_noise = ServiceMethod(apply_noise_method_name, {"noise_level"});
+std::function<bool(float)> apply_noise_lambda = [this](float noise_level) -> bool {
+    // Set high noise by adjusting filters or eph/epv directly
+    eph_filter.SetOutput(noise_level);
+    epv_filter.SetOutput(noise_level);
+    return true;
+};
+auto apply_noise_handler = apply_noise.CreateMethodHandler(apply_noise_lambda);
+service_manager_.RegisterMethod(apply_noise, apply_noise_handler);
+}
+
+bool Gps::Impl::disableSensor() {
+  is_enabled_ = false;
+  return true;
+}
+
+bool Gps::Impl::enableSensor() {
+  is_enabled_ = true;
+  return true;
 }
 
 void Gps::Impl::OnEndUpdate() {
