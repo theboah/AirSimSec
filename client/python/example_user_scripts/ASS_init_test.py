@@ -2,7 +2,6 @@ import asyncio
 from projectairsim import ProjectAirSimClient, Drone, World
 from projectairsim.utils import projectairsim_log
 from projectairsim.image_utils import ImageDisplay
-from testidek import inject_faults
 
 # Async main function to wrap async drone commands
 async def main():
@@ -20,7 +19,6 @@ async def main():
         # Create a Drone object to interact with a drone in the loaded sim world
         drone = Drone(client, world, "Drone1")
         
-        fault_injection_module = inject_faults(drone, world)
         # ------------------------------------------------------------------------------
 
         # Set the drone to be ready to fly

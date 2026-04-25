@@ -198,25 +198,10 @@
     }
   ],
   "controller": {
-    "id": "PX4_Controller",
-    "type": "px4-api",
-    "px4-settings": {
-      "lock-step" : true,
-      "use-serial": false,
-      "use-tcp": true,
-      "tcp-port": 4560,
-      "local-host-ip": "192.168.240.1",
-      "control-ip-address": "remote",
-      "control-port": 14540,
-      "qgc-host-ip": "127.0.0.1",
-      "qgc-port": 14550,
-      "parameters": {
-        "NAV_RCL_ACT": 0,
-        "NAV_DLL_ACT": 0,
-        "COM_OBL_ACT": 1,
-        "LPE_LAT": 47.641468,
-        "LPE_LON": -122.140165
-      },
+    "id": "Simple_Flight_Controller",
+    "airframe-setup": "quadrotor-x",
+    "type": "simple-flight-api",
+    "simple-flight-api-settings": {
       "actuator-order": [
         {
           "id": "Prop_FR_actuator"
@@ -319,7 +304,7 @@
     {
       "id": "Chase",
       "type": "camera",
-      "enabled": true,
+      "enabled": false,
       "parent-link": "Frame",
       "capture-interval": 0.03,
       "capture-settings": [
@@ -350,12 +335,12 @@
       "type": "camera",
       "enabled": true,
       "parent-link": "Frame",
-      "capture-interval": 0.02,
+      "capture-interval": 0.03,
       "capture-settings": [
         {
-          "image-type": 0,
-          "width": 400,
-          "height": 225,
+          "image-type": 0,  // scene camera
+          "width": 168,
+          "height": 94,
           "fov-degrees": 90,
           "capture-enabled": true,
           "streaming-enabled": false,
@@ -364,9 +349,29 @@
           "target-gamma": 2.5
         },
         {
-          "image-type": 1,
-          "width": 400,
-          "height": 225,
+          "image-type": 1,  // depth planar
+          "width": 168,
+          "height": 94,
+          "fov-degrees": 90,
+          "capture-enabled": false,
+          "streaming-enabled": false,
+          "pixels-as-float": true,
+          "compress": false
+        },
+        {
+          "image-type": 2,  // depth perspective
+          "width": 168,
+          "height": 94,
+          "fov-degrees": 90,
+          "capture-enabled": false,
+          "streaming-enabled": false,
+          "pixels-as-float": true,
+          "compress": false
+        },
+        {
+          "image-type": 3,  // segmentation
+          "width": 168,
+          "height": 94,
           "fov-degrees": 90,
           "capture-enabled": false,
           "streaming-enabled": false,
@@ -374,19 +379,30 @@
           "compress": false
         },
         {
-          "image-type": 2,
-          "width": 400,
-          "height": 225,
+          "image-type": 4,  // depth vis
+          "width": 168,
+          "height": 94,
           "fov-degrees": 90,
-          "capture-enabled": true,
+          "capture-enabled": false,
+          "streaming-enabled": false,
+          "pixels-as-float": false,
+          "compress": false,
+          "max-depth-meters": 100
+        },
+        {
+          "image-type": 5,  // disparity normalized
+          "width": 168,
+          "height": 94,
+          "fov-degrees": 90,
+          "capture-enabled": false,
           "streaming-enabled": false,
           "pixels-as-float": false,
           "compress": false
         },
         {
-          "image-type": 3,
-          "width": 400,
-          "height": 225,
+          "image-type": 6,  // surface normals
+          "width": 168,
+          "height": 94,
           "fov-degrees": 90,
           "capture-enabled": false,
           "streaming-enabled": false,
@@ -439,19 +455,19 @@
     {
       "id": "GPS",
       "type": "gps",
-      "enabled": true,
+      "enabled": false,
       "parent-link": "Frame"
     },
     {
       "id": "Barometer",
       "type": "barometer",
-      "enabled": true,
+      "enabled": false,
       "parent-link": "Frame"
     },
     {
       "id": "Magnetometer",
       "type": "magnetometer",
-      "enabled": true,
+      "enabled": false,
       "parent-link": "Frame"
     }
   ]

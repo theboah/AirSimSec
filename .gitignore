@@ -376,3 +376,7 @@ env/
 # Simulink cache
 **/slprj
 *.slxc
+
+
+# AirSimSec
+events.out.tfevents.*
