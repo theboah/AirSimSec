@@ -308,7 +308,7 @@
       "parent-link": "Frame",
       "capture-interval": 0.001,
       "origin": {
-        "xyz": "-5 -5 0.0",
+        "xyz": "0.4 0.0 0.0",
         "rpy-deg": "0 0 0"
       },
       "capture-settings": [
@@ -318,6 +318,7 @@
           "height": 128,
           "fov-degrees": 90,
           "capture-enabled": true,
+          "streaming-enabled": true,
           "pixels-as-float": false,
           "compress": false,
           "target-gamma": 2.5
