@@ -15,6 +15,8 @@ from projectairsim.utils import (
     rpy_to_quaternion,
     load_scene_config_as_dict,
 )
+from attacks import load_attacks_from_config
+from secState import Pose, GPSPosition, State
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../.."))
 
@@ -32,36 +34,65 @@ class AirSimEnv(gym.Env):
 
     def __init__(self, config, render_mode=None, **kwargs):
         # Load config
-        scene_path = config.get("scene_config_path")
-        dt = config.get("dt", 0.1)
-        goal_tolerance = config.get("goal_tolerance", 0.5)
-        goal_coords = config.get("goal_coords", [0.0, 0.0, 0.0])
-        goal_gps_coords = config.get("goal_gps_coords")
-        self.randomization_config = (
-            config.get("randomization", {}) if isinstance(config.get("randomization"), dict) else {}
-        )
-        self.randomization_enabled = bool(self.randomization_config.get("enabled", False))
-        self.randomization_seed = self.randomization_config.get("seed")
-        self.goal_randomization_config = (
-            self.randomization_config.get("goal", {})
-            if isinstance(self.randomization_config.get("goal"), dict)
-            else {}
-        )
-        self.start_randomization_config = (
-            self.randomization_config.get("start", {})
-            if isinstance(self.randomization_config.get("start"), dict)
-            else {}
-        )
-        self.limit_x, self.limit_y, self.limit_z = config.get("limit_xyz", [50.0, 50.0, 50.0])
-        self.step_limit = config.get("step_limit", 2000)
-
-        self.scene_path = os.path.abspath(scene_path)
+        self.scene_path = os.path.abspath(config.get("scene_config_path"))
         self.scene_dir = os.path.dirname(self.scene_path)
         self.scene_name = config.get("scene_filename") or os.path.basename(self.scene_path)
+        scene_config, _ = load_scene_config_as_dict(self.scene_name, self.scene_dir)
+        
         self.render_mode = render_mode
-        self.env_config = config
+        self.dt = config.get("dt", 0.1)
+        self.subscribed_topics = []
+        
+        #Randomisation
+        self.randomization_config = (config.get("randomization", {}))
+        self.randomization_seed = self.randomization_config.get("seed")
+        
+            #Start
+        self.start_randomization_config = (self.randomization_config.get("start", {}))
+        self.episode_start_pose = None
+        
+            #Goal
+        self.goal_randomization_config = (self.randomization_config.get("goal", {}))
+        self.goal_tolerance = config.get("goal_tolerance", 0.5)
+        self.home_geo_point = self._get_home_geo_point(scene_config)
+        self.goal_local_ned = [0.0, 0.0, 0.0]
+        self.prev_goal_distance = None
+        self.episode_goal_gps_coords = [0.0, 0.0, 0.0]
+        
+        #AirSim plugin setup
+        self.client = ProjectAirSimClient()
+        self.client.connect()
+        
+        self.world = World(
+            self.client,
+            scene_config_name=self.scene_name,
+            delay_after_load_sec=4,
+            sim_config_path=self.scene_dir,
+        )
+        self.actor = Drone(self.client, self.world, "Drone1")
+        self.initial_actor_pose = self.actor.get_ground_truth_pose()
+        self.initially_landed = self._is_currently_landed()
+        self.yaw_rate_max_rad_s = float(config.get("max_yaw_rate_rad_s", np.pi / 2.0))
 
-        self.action_shape = (4,)  # V_north, V_east, V_down, yaw_rate_cmd
+        #Training
+        self.limit_x, self.limit_y, self.limit_z = config.get("limit_xyz", [50.0, 50.0, 50.0])
+        self.done = False
+        self.episode_index = 0
+        self.state = None
+        self.collision_info = None
+        self.step_num = 0
+        self.step_limit = config.get("step_limit", 2000)
+        self.reset_num = 0
+        self.annotation_msg = {}
+        self.img_msg = None
+        self.gps_msg = None
+        self.action_shape = (4,)
+        self.action_space = spaces.Box(
+            -1.0,
+            1.0,
+            shape=self.action_shape,
+            dtype=np.float32,
+        )
         obs_shape = config.get("observation_image_shape", [128, 128, 3])
         self.obs_image_height = int(obs_shape[0])
         self.obs_image_width = int(obs_shape[1])
@@ -92,187 +123,99 @@ class AirSimEnv(gym.Env):
                 ),
             }
         )
-        self.action_space = spaces.Box(
-            -1.0,
-            1.0,
-            shape=self.action_shape,
-            dtype=np.float32,
-        )
-        self.yaw_rate_max_rad_s = float(config.get("max_yaw_rate_rad_s", np.pi / 2.0))
-
-        self.save_obs_example = bool(config.get("save_obs_example", True))
-        self.obs_example_path = config.get(
-            "obs_example_path",
-            os.path.join(self.scene_dir, "obs_example.png"),
-        )
-        self._saved_obs_example = False
-
-        self.annotation_msg = {}
-        self.img_msg = None
-        self.gps_msg = None
-        self.actor_pose = None
-        self.state = None
-        self.collision_info = None
         self.accept_collision_events = False
         self.collision_accept_after = 0.0
-        self.collision_ignore_duration_sec = float(
-            config.get("collision_ignore_duration_sec", 1.0)
-        )
-        self.takeoff_ack_timeout_sec = float(
-            config.get("takeoff_ack_timeout_sec", 4.0 * 0.02)
-        )
-        self.reset_takeoff_wait_sec = float(
-            config.get("reset_takeoff_wait_sec", 1.5)
-        )
-        self.reset_land_wait_sec = float(
-            config.get("reset_land_wait_sec", 1.0)
-        )
-        self.pose_reset_position_tol_m = float(
-            config.get("pose_reset_position_tol_m", 0.05)
-        )
-        self.pose_reset_quat_tol = float(config.get("pose_reset_quat_tol", 1e-3))
-        self.pose_reset_max_retries = int(config.get("pose_reset_max_retries", 3))
-        self.subscribed_topics = []
-        self.step_num = 0
+        self._event_loop = self._setup_event_loop()
         
+        #Attacks
+        self.min_reset_before_attacks = int(config.get("min_reset_before_attacks", 5000))
+        #self.attacks = load_attacks_from_config(config.get("attacks", []))
+        self.attacks = []
         
-        
-        
-
-        client = ProjectAirSimClient()
-        client.connect()
-        scene_config, _ = load_scene_config_as_dict(self.scene_name, self.scene_dir)
-        world = World(
-            client,
-            scene_config_name=self.scene_name,
-            delay_after_load_sec=4,
-            sim_config_path=self.scene_dir,
-        )
-        drone = Drone(client, world, "Drone1")
-        self.client, self.world, self.actor = client, world, drone
-        self.initial_actor_pose = self.actor.get_ground_truth_pose()
-        self.initially_landed = self._is_currently_landed()
-        self.done = False
-
-        self.dt = dt
-        self.goal_tolerance = goal_tolerance
-        self.fixed_goal_gps_coords = (
-            goal_gps_coords if goal_gps_coords is not None else goal_coords
-        )
-        self.goal_gps_coords = self.fixed_goal_gps_coords
-        self.goal_coords = self.goal_gps_coords
-        self.home_geo_point = self._get_home_geo_point(scene_config)
-        self.goal_local_ned = [0.0, 0.0, 0.0]
-        self.prev_goal_distance = None
-        self.episode_index = 0
-        self.episode_start_pose = None
-        self.episode_goal_gps_coords = self.goal_gps_coords
-
+        #Reward and penalties
         self.progress_reward_scale = float(config.get("progress_reward_scale", 1.0))
         self.step_penalty = float(config.get("step_penalty", 0.01))
+        self.reward_reference_dt = float(config.get("reward_reference_dt", 0.2))
+        if self.reward_reference_dt <= 0.0:
+            raise ValueError("reward_reference_dt must be > 0")
+        self.reward_dt_scale = self.dt / self.reward_reference_dt
         self.goal_reached_bonus = float(config.get("goal_reached_bonus", 10.0))
         self.collision_penalty = float(config.get("collision_penalty", 15.0))
         self.out_of_arena_penalty = float(config.get("out_of_arena_penalty", 10.0))
         self.timeout_penalty = float(config.get("timeout_penalty", 2.0))
-
-        self.arena_norm_factor = np.sqrt(
-            self.limit_x**2 + self.limit_y**2 + self.limit_z**2
-        )
+        
+        
 
     def reset(self, *, seed=None, options=None):
-        reset_t0 = time.perf_counter()
-        print("[RESET] start")
+        self.reset_num += 1
         effective_seed = seed
         if effective_seed is None and self.randomization_seed is not None:
             effective_seed = int(self.randomization_seed) + int(self.episode_index)
         super().reset(seed=effective_seed)
         self.done = False
         self.step_num = 0
-        self.actor_pose = None
         self.state = None
         self.collision_info = None
         self.img_msg = None
         self.gps_msg = None
         self.annotation_msg = {}
         self.accept_collision_events = False
-        self.collision_accept_after = time.time() + self.collision_ignore_duration_sec
+        self.collision_accept_after = time.time() + 1
         
-        t = time.perf_counter()
         self.world.pause()
-        print(f"[RESET] world.pause() took {time.perf_counter() - t:.3f}s")
 
-        t = time.perf_counter()
         self._cancel_active_task()
-        print(f"[RESET] _cancel_active_task() took {time.perf_counter() - t:.3f}s")
 
         self.episode_goal_gps_coords, self.goal_local_ned, self.episode_start_pose = (
             self._sample_episode_setup()
         )
         self.goal_gps_coords = self.episode_goal_gps_coords
-        self.goal_coords = self.goal_gps_coords
 
-        t = time.perf_counter()
         self._reset_actor_pose(self.episode_start_pose)
-        print(f"[RESET] _reset_actor_pose() took {time.perf_counter() - t:.3f}s")
 
-        t = time.perf_counter()
         self._ensure_subscriptions()
-        print(f"[RESET] _ensure_subscriptions() took {time.perf_counter() - t:.3f}s")
 
-        t = time.perf_counter()
         self.actor.enable_api_control()
         self.actor.arm()
-        print(f"[RESET] enable_api_control()+arm() took {time.perf_counter() - t:.3f}s")
 
         if self.initially_landed:
-            t = time.perf_counter()
             self._run_coroutine_sync(self._takeoff_and_wait_async())
-            print(f"[RESET] _takeoff_and_wait_async() took {time.perf_counter() - t:.3f}s")
 
         # Advance Sim by a dt step to get initial observation
-        t = time.perf_counter()
-        self.world.continue_for_sim_time(self.dt * 1e9, wait_until_complete=True)
-        print(f"[RESET] continue_for_sim_time(dt) took {time.perf_counter() - t:.3f}s")
+        self.world.continue_for_sim_time(self.dt * 1e9, wait_until_complete=False)
 
         # Wait until an initial image observation is received
-        t = time.perf_counter()
         image_wait_loops = 0
         while self.img_msg is None:
             image_wait_loops += 1
             time.sleep(self.dt)
-        print(
-            f"[RESET] initial image wait took {time.perf_counter() - t:.3f}s "
-            f"({image_wait_loops} loop(s))"
-        )
 
         self.accept_collision_events = True
-        t = time.perf_counter()
         state = self.get_state()
-        print(f"[RESET] get_state() took {time.perf_counter() - t:.3f}s")
         self.prev_goal_distance = self._goal_distance(state)
+        pose = [0.0, 0.0, 0.0, 0.0] if state.pose is None else state.pose.to_list()
+        goal_vector = self._goal_vector_as_list(state.goal_vector)
         obs = {
-            "rgb_image": state["rgb_image"],
-            "pose": np.asarray(state["pose"], dtype=np.float32),
-            "goal_vector": np.asarray(state["goal_vector"], dtype=np.float32),
+            "rgb_image": state.img,
+            "pose": np.asarray(pose, dtype=np.float32),
+            "goal_vector": np.asarray(goal_vector, dtype=np.float32),
         }
-        print(f"[RESET] done in {time.perf_counter() - reset_t0:.3f}s")
         self.episode_index += 1
         return obs, {}
 
     def step(self, action):
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_closed():
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-    
+        """Execute one step of the environment."""
+        loop = self._get_event_loop()
         return loop.run_until_complete(self.step_async(action))
 
     def close(self):
-        self.client.disconnect()
+        """Close the environment and clean up resources."""
+        try:
+            self.client.disconnect()
+        finally:
+            if self._event_loop is not None and not self._event_loop.is_closed():
+                self._event_loop.close()
+                self._event_loop = None
 
     async def _take_action(self,action):
         if isinstance(action, np.ndarray):
@@ -291,7 +234,7 @@ class AirSimEnv(gym.Env):
         yaw_rate_cmd = action[3]
         yaw_rate = float(np.clip(yaw_rate_cmd, -1.0, 1.0)) * self.yaw_rate_max_rad_s
 
-        move_task = await self.actor.move_by_velocity_async(
+        await self.actor.move_by_velocity_async(
             v_north,
             v_east,
             v_down,
@@ -300,28 +243,29 @@ class AirSimEnv(gym.Env):
             yaw_is_rate=True,
             yaw=yaw_rate,
         )
-        self.world.continue_for_sim_time(self.dt * 1e9, wait_until_complete=True)
+        self.world.continue_for_sim_time(self.dt * 1e9, wait_until_complete=False)
 
     async def step_async(self, action):
         timeout = False
         goal_reached = False
         out_of_arena = False
         
-        self._take_action(action)
-        
-        next_state = self.get_state()
-        ground_truth_info = next_state
-        observed_info = next_state
+        await self._take_action(action)
+         
+        ground_truth_info = self.get_state()
+        observed_info = copy.deepcopy(ground_truth_info)
         
         #OBSERVED INFO
         #attack observed info here
-        
+        if self.reset_num >= self.min_reset_before_attacks:
+            for attack in self.attacks:
+                observed_info = attack.attack_sim(self.step_num, observed_info)  
         
         #TRUE INFO
         true_current_goal_distance = self._goal_distance(ground_truth_info)
         previous_goal_distance = (
             true_current_goal_distance
-            if self.prev_goal_distance is None
+            if self.prev_goal_distance is None or not np.isfinite(self.prev_goal_distance)
             else self.prev_goal_distance
         )
         
@@ -332,7 +276,7 @@ class AirSimEnv(gym.Env):
             self.done = True
             goal_reached = True
             print("GOAL REACHED")
-        elif self.is_outside_arena(ground_truth_info.get("pose")):
+        elif self.is_outside_arena(ground_truth_info.pose):
             self.done = True
             out_of_arena = True
             print("OUT OF ARENA")
@@ -351,17 +295,23 @@ class AirSimEnv(gym.Env):
         )
         terminated = self.done and not timeout
         self.step_num += 1
-        self.prev_goal_distance = true_current_goal_distance
+        self.prev_goal_distance = (
+            true_current_goal_distance
+            if np.isfinite(true_current_goal_distance)
+            else previous_goal_distance
+        )
         info = {
             "status": "Running",
-            "gps_position": observed_info.get("gps_position"),
-            "gps_displacement_to_goal": observed_info.get("gps_displacement_to_goal"),
+            "gps_position": observed_info.gps_position,
+            "gps_displacement_to_goal": observed_info.goal_vector,
             "goal_coords": self.goal_gps_coords,
         }
+        pose = [0.0, 0.0, 0.0, 0.0] if observed_info.pose is None else observed_info.pose.to_list()
+        goal_vector = self._goal_vector_as_list(observed_info.goal_vector)
         next_obs = {
-            "rgb_image": observed_info["rgb_image"],
-            "pose": np.asarray(observed_info["pose"], dtype=np.float32),
-            "goal_vector": np.asarray(observed_info["goal_vector"], dtype=np.float32),
+            "rgb_image": observed_info.img,
+            "pose": np.asarray(pose, dtype=np.float32),
+            "goal_vector": np.asarray(goal_vector, dtype=np.float32),
         }
         return (next_obs, reward, terminated, timeout, info)
 
@@ -373,43 +323,18 @@ class AirSimEnv(gym.Env):
             self.display_debug_info(self.state, self.annotation_msg)
 
     def get_state(self):
-        # Get pose of the Robot/Drone
-        if self.actor_pose is None:
-            self.actor_pose = self.get_vec_from_pose(
-                self.world.get_object_pose(self.actor.name)
-            )
-        (actor_x, actor_y, actor_z, _, _, actor_yaw) = self.actor_pose
-        sensor_gps_position = self.get_gps_position(self.gps_msg)
-        gps_position = sensor_gps_position
-        if gps_position is None and self.home_geo_point is not None:
-            gps_position = self._local_ned_to_geo(
-                [actor_x, actor_y, actor_z],
-                self.home_geo_point,
-            )
-        displacement_to_goal = [
-            actor_x - self.goal_local_ned[0],
-            actor_y - self.goal_local_ned[1],
-            actor_z - self.goal_local_ned[2],
-        ]
+        (actor_x, actor_y, actor_z, _, _, actor_yaw) = self.get_vec_from_pose(self.world.get_object_pose(self.actor.name))
+        drone_pose = Pose(actor_x, actor_y, actor_z, actor_yaw)
+        
+        gps_position = self.get_gps_position(self.gps_msg)
 
-        drone_pose: List = [actor_x, actor_y, actor_z, actor_yaw]
-        # Populate the observation for the Agent
-        self.state = {
-            "pose": drone_pose,
-            "rgb_image": self._get_processed_rgb_image(self.img_msg),
-            "gps_position": gps_position,
-            "displacement_to_goal": displacement_to_goal,
-            "goal_vector": displacement_to_goal,
-        }
-        if self.goal_gps_coords is not None and self.state["gps_position"] is not None:
-            self.state["gps_displacement_to_goal"] = [
-                self.state["gps_position"][0] - self.goal_gps_coords[0],
-                self.state["gps_position"][1] - self.goal_gps_coords[1],
-                self.state["gps_position"][2] - self.goal_gps_coords[2],
-            ]
+        # Calculate goal_vector in local NED coordinates (meters)
+        if self.goal_local_ned is None:
+            goal_vector = None
         else:
-            self.state["gps_displacement_to_goal"] = None
-            
+            goal_vector = [actor_x - self.goal_local_ned[0], actor_y - self.goal_local_ned[1],actor_z - self.goal_local_ned[2]]
+
+        self.state = State(drone_pose, self._get_processed_rgb_image(self.img_msg), gps_position, goal_vector)
         return self.state
 
     def get_reward(
@@ -422,10 +347,14 @@ class AirSimEnv(gym.Env):
         timeout: bool,
     ):
         """Progress-shaped reward with terminal event shaping."""
+        delta_distance = previous_goal_distance - current_goal_distance
+        if not np.isfinite(delta_distance):
+            delta_distance = 0.0
+
         reward = (
             self.progress_reward_scale
-            * (previous_goal_distance - current_goal_distance)
-            - self.step_penalty
+            * delta_distance
+            - (self.step_penalty * self.reward_dt_scale)
         )
 
         if goal_reached:
@@ -437,19 +366,34 @@ class AirSimEnv(gym.Env):
         if timeout:
             reward -= self.timeout_penalty
 
+        if not np.isfinite(reward):
+            return -(self.step_penalty * self.reward_dt_scale)
+
         return reward
+
+    #Returns goal_distance in meters
+    def _goal_distance(self, state):
+        goal_vector_array = np.asarray(state.goal_vector, dtype=np.float64)
+        distance = float(np.linalg.norm(goal_vector_array, ord=2))
+        if not np.isfinite(distance):
+            return self.missing_goal_distance_m
+        return distance
+
+    def _goal_vector_as_list(self, goal_vector):
+        if goal_vector is None:
+            return [0.0, 0.0, 0.0]
+        if hasattr(goal_vector, "to_list"):
+            return goal_vector.to_list()
+        if isinstance(goal_vector, np.ndarray):
+            return goal_vector.tolist()
+        if isinstance(goal_vector, (list, tuple)):
+            return list(goal_vector)
+        return [float(goal_vector[0]), float(goal_vector[1]), float(goal_vector[2])]
 
     #Callbacks
     def _ensure_subscriptions(self):
         if self.subscribed_topics:
             return
-
-        pose_topic = self.actor.robot_info["actual_pose"]
-        self.client.subscribe(
-            pose_topic,
-            lambda _, pose: self.callback_pose(pose),
-        )
-        self.subscribed_topics.append(pose_topic)
 
         camera_topic = self.actor.sensors["ForwardViewCamera"]["scene_camera"]
         self.client.subscribe(
@@ -469,24 +413,6 @@ class AirSimEnv(gym.Env):
             lambda _, collision_info: self.callback_collision(collision_info),
         )
         self.subscribed_topics.append(collision_topic)
-    
-    def callback_pose(self, pose):
-        (
-            actor_x,
-            actor_y,
-            actor_z,
-            actor_roll,
-            actor_pitch,
-            actor_yaw,
-        ) = self.get_vec_from_pose(pose)
-        self.actor_pose = [
-            actor_x,
-            actor_y,
-            actor_z,
-            actor_roll,
-            actor_pitch,
-            actor_yaw,
-        ]
 
     def callback_camera(self, topic, image_msg):
         self.img_msg = image_msg
@@ -531,7 +457,10 @@ class AirSimEnv(gym.Env):
         altitude = gps_msg.get("altitude")
         if latitude is None or longitude is None or altitude is None:
             return None
-        return [latitude, longitude, altitude]
+        
+        pos = GPSPosition(latitude, longitude, altitude)
+        
+        return pos
         
     def callback_collision(self, collision_info):
         self.collision_info = collision_info
@@ -542,7 +471,6 @@ class AirSimEnv(gym.Env):
         if not self._is_collision_event(collision_info):
             return
         self.done = True
-        print("COLLISION")
 
     def _is_collision_event(self, collision_info):
         if isinstance(collision_info, dict):
@@ -607,8 +535,10 @@ class AirSimEnv(gym.Env):
 
         return (x, y, z, roll, pitch, yaw)
 
-    def is_outside_arena(self, pose: List):
-        x, y, z, _ = pose
+    def is_outside_arena(self, pose):
+        if pose is None:
+            return False
+        x, y, z, _ = pose.to_list()
         max_x = self.goal_local_ned[0] + self.limit_x
         min_x = self.goal_local_ned[0] - self.limit_x
         max_y = self.goal_local_ned[1] + self.limit_y
@@ -630,8 +560,8 @@ class AirSimEnv(gym.Env):
     def display_debug_info(
         self, state, annotation_msg, win_name="ProjectAirSimDetectAvoid"
     ):
-        if state["rgb_image"] is not None:
-            img_np = state["rgb_image"]
+        if state is not None and state.img is not None:
+            img_np = state.img
             for annotation in annotation_msg.get("annotations", []):
                 bbox_center = annotation["bbox2d"]["center"]
                 bbox_size = annotation["bbox2d"]["size"]
@@ -661,7 +591,7 @@ class AirSimEnv(gym.Env):
             target_pose = target_pose or self.initial_actor_pose
             current_pose = None
             diff = None
-            for _ in range(max(1, self.pose_reset_max_retries)):
+            for _ in range(max(1, 3)):
                 self.actor.set_pose(target_pose, reset_kinematics=True)
                 current_pose = self.actor.get_ground_truth_pose()
                 is_valid, diff = self._is_pose_reset_valid(
@@ -732,16 +662,15 @@ class AirSimEnv(gym.Env):
             "frame_id"
         )
         is_valid = (
-            position_error_m <= self.pose_reset_position_tol_m
-            and quat_error <= self.pose_reset_quat_tol
-            and frame_id_match
+            position_error_m <= 0.05
+            and quat_error <= 1e-3 and frame_id_match
         )
         diff = {
             "position_error_m": position_error_m,
             "quat_error": quat_error,
             "frame_id_match": frame_id_match,
-            "position_tol_m": self.pose_reset_position_tol_m,
-            "quat_tol": self.pose_reset_quat_tol,
+            "position_tol_m": 0.05,
+            "quat_tol": 1e-3,
         }
         return is_valid, diff
 
@@ -768,30 +697,26 @@ class AirSimEnv(gym.Env):
         down = float(ref_alt) - float(alt)
         return [north, east, down]
 
-    def _local_ned_to_geo(self, local_ned, reference_geo_coords):
-        """Convert local [north, east, down] in meters to [lat, lon, alt]."""
-        north, east, down = local_ned
-        ref_lat, ref_lon, ref_alt = reference_geo_coords
-        ref_lat_rad = np.radians(float(ref_lat))
-        lat = float(ref_lat) + np.degrees(float(north) / self.EARTH_RADIUS_M)
-        cos_lat = np.cos(ref_lat_rad)
-        if abs(cos_lat) < 1e-9:
-            lon = float(ref_lon)
-        else:
-            lon = float(ref_lon) + np.degrees(float(east) / (self.EARTH_RADIUS_M * cos_lat))
-        alt = float(ref_alt) - float(down)
-        return [lat, lon, alt]
-
-    def _run_coroutine_sync(self, coroutine):
+    def _setup_event_loop(self):
+        """Create and return a new event loop for this environment."""
         try:
             loop = asyncio.get_event_loop()
             if loop.is_closed():
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+                raise RuntimeError("Event loop is closed")
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+        return loop
 
+    def _get_event_loop(self):
+        """Get the cached event loop, creating one if necessary."""
+        if self._event_loop is None or self._event_loop.is_closed():
+            self._event_loop = self._setup_event_loop()
+        return self._event_loop
+
+    def _run_coroutine_sync(self, coroutine):
+        """Run an async coroutine synchronously using the cached event loop."""
+        loop = self._get_event_loop()
         return loop.run_until_complete(coroutine)
 
     def _sample_uniform(self, low: float, high: float) -> float:
@@ -815,12 +740,6 @@ class AirSimEnv(gym.Env):
         ]
 
     def _sample_goal_coords(self):
-        if not (self.randomization_enabled and self.goal_randomization_config.get("enabled", False)):
-            return copy.deepcopy(self.fixed_goal_gps_coords)
-
-        if self.goal_randomization_config.get("mode", "gps_box") != "gps_box":
-            return copy.deepcopy(self.fixed_goal_gps_coords)
-
         gps_box = self.goal_randomization_config.get("gps_box", {})
         required_keys = (
             "lat_min",
@@ -830,8 +749,6 @@ class AirSimEnv(gym.Env):
             "alt_min",
             "alt_max",
         )
-        if not all(key in gps_box for key in required_keys):
-            return copy.deepcopy(self.fixed_goal_gps_coords)
 
         return [
             self._sample_uniform(float(gps_box["lat_min"]), float(gps_box["lat_max"])),
@@ -841,8 +758,6 @@ class AirSimEnv(gym.Env):
 
     def _sample_start_pose(self):
         pose = copy.deepcopy(self.initial_actor_pose)
-        if not (self.randomization_enabled and self.start_randomization_config.get("enabled", False)):
-            return pose
 
         if self.start_randomization_config.get("mode", "local_ned_box") != "local_ned_box":
             return pose
@@ -896,7 +811,6 @@ class AirSimEnv(gym.Env):
         return pose
 
     def _sample_episode_setup(self):
-        goal_coords = copy.deepcopy(self.fixed_goal_gps_coords)
         goal_local_ned = copy.deepcopy(self.goal_local_ned)
         start_pose = copy.deepcopy(self.initial_actor_pose)
 
@@ -936,52 +850,25 @@ class AirSimEnv(gym.Env):
         return goal_coords, goal_local_ned, start_pose
 
     async def _takeoff_and_wait_async(self):
-        print("[RESET] takeoff_async: issuing command")
         try:
             takeoff_task = await self.actor.takeoff_async(
-                timeout_sec=self.takeoff_ack_timeout_sec
+                timeout_sec= 4.0 * 0.02
             )
-            deadline = time.monotonic() + self.reset_takeoff_wait_sec
+            deadline = time.monotonic() + 1.5
             sim_step_ns = max(1, int(self.dt * 1e9))
 
             while time.monotonic() < deadline:
                 if not self._is_currently_landed():
-                    print("[RESET] takeoff_async: airborne state reached")
                     return
 
-                self.world.continue_for_sim_time(sim_step_ns, wait_until_complete=True)
+                self.world.continue_for_sim_time(sim_step_ns, wait_until_complete=False)
                 await asyncio.sleep(0)
 
                 if takeoff_task.done():
                     break
 
-            print(
-                "[RESET] takeoff_async: still landed after quick wait "
-                f"({self.reset_takeoff_wait_sec:.3f}s); continuing reset"
-            )
         except Exception as exc:
             print(f"[RESET] takeoff_async failed: {exc}")
-
-    async def _land_and_wait_async(self):
-        try:
-            if self._is_currently_landed():
-                return
-            land_task = await self.actor.land_async(timeout_sec=self.takeoff_ack_timeout_sec)
-            deadline = time.monotonic() + self.reset_land_wait_sec
-            sim_step_ns = max(1, int(self.dt * 1e9))
-            while time.monotonic() < deadline:
-                if self._is_currently_landed():
-                    return
-                self.world.continue_for_sim_time(sim_step_ns, wait_until_complete=True)
-                await asyncio.sleep(0)
-                if land_task.done():
-                    break
-            print(
-                "[RESET] land_async: still not landed after quick wait "
-                f"({self.reset_land_wait_sec:.3f}s); continuing reset"
-            )
-        except Exception as exc:
-            print(f"[RESET] land_async failed: {exc}")
     
     def _is_currently_landed(self):
         try:

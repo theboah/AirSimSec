@@ -16,6 +16,6 @@ register(
 env = make_vec_env("AirSim", n_envs=1, seed=42)
 env = VecTransposeImage(env)
 
-model = PPO("MultiInputPolicy", env, verbose=1, tensorboard_log="./logs/", device="cuda")
-model.learn(total_timesteps=75_600, progress_bar=True)
-model.save("airsimbase_ppo_HOUR_noATTACK_randomised")
+model = PPO("MultiInputPolicy", env, verbose=1, tensorboard_log="./logs/", device="cuda", n_steps=16000, batch_size=16000)
+model.learn(total_timesteps=500_000, progress_bar=True)
+model.save("a_none_goal_check_t1_500k.zip")

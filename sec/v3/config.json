@@ -1,18 +1,17 @@
 {
     "scene_config_path": "G:\\Repos\\AirSimSec\\sec\\v3\\scene_basic_drone.jsonc",
     "scene_filename": "scene_basic_drone.jsonc",
-    "dt": 0.2,
-    "step_limit": 2000,
-    "goal_tolerance": 0.5,
-    "goal_coords": [47.64137817, -122.140165, 132.0],
+    "dt": 0.1,
+    "reward_reference_dt": 0.2,
+    "step_limit": 4000,
+    "goal_tolerance": 0.1,
     "limit_xyz": [50.0, 50.0, 50.0],
+    "min_reset_before_attacks": 7,
 
     "randomization": {
-        "enabled": true,
         "seed": 42,
 
         "goal": {
-            "enabled": true,
             "mode": "gps_box",
             "gps_box": {
                 "lat_min": 47.64130000,
@@ -23,12 +22,10 @@
                 "alt_max": 136.0
             },
             "min_start_to_goal_distance_m": 8.0,
-            "max_start_to_goal_distance_m": 70.0,
-            "fallback_goal_coords": [47.64137817, -122.140165, 132.0]
+            "max_start_to_goal_distance_m": 70.0
         },
 
         "start": {
-            "enabled": true,
             "mode": "local_ned_box",
             "local_ned_box": {
                 "north_min": -12.0,
@@ -42,6 +39,17 @@
             "yaw_min_rad": -3.14159265,
             "yaw_max_rad": 3.14159265
         }
-    }
+    },
+    "attacks": [
+        {
+            "type": "gps_jam_noise",
+            "probability": 0.5,
+            "duration_min": 10,
+            "duration_max": 50,
+            "start_step_min": 15,
+            "start_step_max": 15,
+            "noise_range": 5
+        }
+    ]
 }
     

@@ -352,7 +352,7 @@
     {
       "id": "GPS",
       "type": "gps",
-      "enabled": false,
+      "enabled": true,
       "parent-link": "Frame"
     }
   ]
