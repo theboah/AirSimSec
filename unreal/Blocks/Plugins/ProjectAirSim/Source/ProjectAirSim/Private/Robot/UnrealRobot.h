@@ -78,7 +78,8 @@ class AUnrealRobot : public AActor {
 
   std::pair<std::string, UUnrealRobotLink*> CreateLink(
       const microsoft::projectairsim::Link& InLink, bool IsRootLink,
-      bool bWithUnrealPhysics);
+      bool bWithUnrealPhysics, bool bHiddenInGame,
+      bool bHiddenInSceneCapture);
 
   void InitializeJoints(
       const std::vector<microsoft::projectairsim::Joint>& InJoints);
@@ -108,6 +109,9 @@ class AUnrealRobot : public AActor {
       const std::vector<microsoft::projectairsim::Joint>& InJoints);
 
   UUnrealRobotLink* RobotRootLink;
+
+    bool bAnyLinkHiddenInGame = false;
+    bool bIgnoreRobotCollisions = false;
 
   microsoft::projectairsim::Robot SimRobot;
   microsoft::projectairsim::UnrealPhysicsBody* SimPhysicsBody;

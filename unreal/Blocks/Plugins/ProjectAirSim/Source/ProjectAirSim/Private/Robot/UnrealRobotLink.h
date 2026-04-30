@@ -51,7 +51,9 @@ class UUnrealRobotLink : public UStaticMeshComponent {
   explicit UUnrealRobotLink(const FObjectInitializer& ObjectInitializer);
 
   void Initialize(const microsoft::projectairsim::Link& Link,
-                  bool with_unreal_physics = false);
+                  bool with_unreal_physics = false,
+                  bool sec_HiddenInGame = false,
+                  bool sec_HiddenInSceneCapture = false);
 
   void TickComponent(float DeltaTime, ELevelTick TickType,
                      FActorComponentTickFunction* ThisTickFunction) override;

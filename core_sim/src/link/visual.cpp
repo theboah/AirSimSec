@@ -34,6 +34,10 @@ class Visual::Loader {
  private:
   void LoadOrigin(const json& json);
 
+  void LoadHiddenInGame(const json& json);
+
+  void LoadHiddenInSceneCapture(const json& json);
+
   void LoadGeometry(const json& json);
 
   void LoadMaterial(const json& json);
@@ -53,6 +57,10 @@ class Visual::Impl : public Component {
 
   const Geometry* GetGeometry() const;
 
+  bool GetHiddenInGame() const;
+
+  bool GetHiddenInSceneCapture() const;
+
   const Material& GetMaterial() const;
 
   operator const TransformTree::RefFrame&(void) const;
@@ -64,6 +72,8 @@ class Visual::Impl : public Component {
   Transform origin_;
   std::unique_ptr<Geometry> geo_;
   Material mat_;
+  bool hidden_in_game_;
+  bool hidden_in_scene_capture_;
   TransformTree::TransformRefFrame
       transformrefframe_;  // Inertial reference frame's transform tree node
 };
@@ -81,6 +91,12 @@ bool Visual::IsLoaded() { return pimpl_->IsLoaded(); }
 const Transform& Visual::GetOrigin() const { return pimpl_->GetOrigin(); }
 
 const Geometry* Visual::GetGeometry() const { return pimpl_->GetGeometry(); }
+
+bool Visual::GetHiddenInGame() const { return pimpl_->GetHiddenInGame(); }
+
+bool Visual::GetHiddenInSceneCapture() const {
+  return pimpl_->GetHiddenInSceneCapture();
+}
 
 const Material& Visual::GetMaterial() const { return pimpl_->GetMaterial(); }
 
@@ -102,7 +118,10 @@ Visual::Impl::Impl(const Logger& logger)
     : Component(Constant::Component::visual, logger),
       loader_(*this),
       mat_(logger),
-      transformrefframe_("Visual", &origin_) {}
+      transformrefframe_("Visual", &origin_) {
+  hidden_in_game_ = false;
+  hidden_in_scene_capture_ = false;
+}
 
 void Visual::Impl::Load(ConfigJson config_json) {
   json json = config_json;
@@ -112,6 +131,12 @@ void Visual::Impl::Load(ConfigJson config_json) {
 const Transform& Visual::Impl::GetOrigin() const { return origin_; }
 
 const Geometry* Visual::Impl::GetGeometry() const { return geo_.get(); }
+
+bool Visual::Impl::GetHiddenInGame() const { return hidden_in_game_; }
+
+bool Visual::Impl::GetHiddenInSceneCapture() const {
+  return hidden_in_scene_capture_;
+}
 
 const Material& Visual::Impl::GetMaterial() const { return mat_; }
 
@@ -126,6 +151,8 @@ Visual::Loader::Loader(Visual::Impl& impl) : impl_(impl) {}
 
 void Visual::Loader::Load(const json& json) {
   LoadOrigin(json);
+  LoadHiddenInGame(json);
+  LoadHiddenInSceneCapture(json);
   LoadGeometry(json);
   LoadMaterial(json);
 
@@ -138,6 +165,24 @@ void Visual::Loader::LoadOrigin(const json& json) {
   impl_.origin_ = JsonUtils::GetTransform(json, Constant::Config::origin);
 
   impl_.logger_.LogVerbose(impl_.name_, "'origin' loaded.");
+}
+
+void Visual::Loader::LoadHiddenInGame(const json& json) {
+  impl_.logger_.LogVerbose(impl_.name_, "Loading 'hidden_in_game'.");
+
+  impl_.hidden_in_game_ =
+      JsonUtils::GetBoolean(json, Constant::Config::hidden_in_game, false);
+
+  impl_.logger_.LogVerbose(impl_.name_, "'hidden_in_game' loaded.");
+}
+
+void Visual::Loader::LoadHiddenInSceneCapture(const json& json) {
+  impl_.logger_.LogVerbose(impl_.name_, "Loading 'hidden_in_scene_capture'.");
+
+  impl_.hidden_in_scene_capture_ = JsonUtils::GetBoolean(
+      json, Constant::Config::hidden_in_scene_capture, false);
+
+  impl_.logger_.LogVerbose(impl_.name_, "'hidden_in_scene_capture' loaded.");
 }
 
 void Visual::Loader::LoadGeometry(const json& json) {

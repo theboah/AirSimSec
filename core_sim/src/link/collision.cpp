@@ -29,6 +29,8 @@ class Collision::Loader {
  private:
   void LoadCollisionEnabled(const json& json);
 
+  void LoadIgnoreRobots(const json& json);
+
   void LoadRestitution(const json& json);
 
   void LoadFriction(const json& json);
@@ -44,6 +46,8 @@ class Collision::Impl : public Component {
 
   bool IsCollisionEnabled() const;
 
+  bool GetIgnoreRobots() const;
+
   float GetRestitution() const;
 
   float GetFriction() const;
@@ -55,6 +59,7 @@ class Collision::Impl : public Component {
   float restitution_;
   float friction_;
   bool collision_enabled_;
+  bool ignore_robots_;
 };
 
 // -----------------------------------------------------------------------------
@@ -75,6 +80,8 @@ bool Collision::IsCollisionEnabled() const {
   return pimpl_->IsCollisionEnabled();
 }
 
+bool Collision::GetIgnoreRobots() const { return pimpl_->GetIgnoreRobots(); }
+
 bool Collision::IsLoaded() { return pimpl_->IsLoaded(); }
 
 // -----------------------------------------------------------------------------
@@ -90,6 +97,8 @@ void Collision::Impl::Load(ConfigJson config_json) {
 
 bool Collision::Impl::IsCollisionEnabled() const { return collision_enabled_; }
 
+bool Collision::Impl::GetIgnoreRobots() const { return ignore_robots_; }
+
 float Collision::Impl::GetRestitution() const { return restitution_; }
 
 float Collision::Impl::GetFriction() const { return friction_; }
@@ -101,6 +110,7 @@ Collision::Loader::Loader(Collision::Impl& impl) : impl_(impl) {}
 
 void Collision::Loader::Load(const json& json) {
   LoadCollisionEnabled(json);
+  LoadIgnoreRobots(json);
   LoadRestitution(json);
   LoadFriction(json);
 
@@ -114,6 +124,15 @@ void Collision::Loader::LoadCollisionEnabled(const json& json) {
       JsonUtils::GetInteger(json, Constant::Config::enabled, 1 /*default*/);
 
   impl_.logger_.LogVerbose(impl_.name_, "'enabled' loaded.");
+}
+
+void Collision::Loader::LoadIgnoreRobots(const json& json) {
+  impl_.logger_.LogVerbose(impl_.name_, "Loading 'ignore_robots'.");
+
+  impl_.ignore_robots_ =
+      JsonUtils::GetBoolean(json, Constant::Config::ignore_robots, false);
+
+  impl_.logger_.LogVerbose(impl_.name_, "'ignore_robots' loaded.");
 }
 
 void Collision::Loader::LoadRestitution(const json& json) {

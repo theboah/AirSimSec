@@ -483,7 +483,8 @@
       "properties": {
         "restitution": { "type": "number" },
         "friction": { "type": "number" },
-        "enabled": { "type": "boolean" }
+        "enabled": { "type": "boolean" },
+        "ignore_robots": { "type": "boolean" }
       }
     },
     "geometry-visual": {
@@ -499,7 +500,9 @@
       "required": [ "geometry" ],
       "properties": {
         "origin": { "$ref": "#/definitions/origin" },
-        "geometry": { "$ref": "#/definitions/geometry-visual" }
+        "geometry": { "$ref": "#/definitions/geometry-visual" },
+        "hidden_in_game": { "type": "boolean" },
+        "hidden_in_scene_capture": { "type": "boolean" }
       }
     },
     "actuator-order": {

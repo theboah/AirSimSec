@@ -15,6 +15,7 @@
 #include "Camera/CameraComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "EngineUtils.h"
 #include "GameFramework/GameUserSettings.h"
 #include "Misc/ScopeLock.h"
 #include "ProjectAirSim.h"
@@ -50,6 +51,9 @@ void AUnrealRobot::Initialize(const projectairsim::Robot& InSimRobot,
 
   // Detect which links are roots based on their joint attachments
   auto RootLinks = GetRootLinks(InSimRobot.GetLinks(), InSimRobot.GetJoints());
+
+  bAnyLinkHiddenInGame = false;
+  bIgnoreRobotCollisions = false;
 
   bool bWithUnrealPhysics = (InSimRobot.GetPhysicsType() ==
                              projectairsim::PhysicsType::kUnrealPhysics);
@@ -92,17 +96,29 @@ void AUnrealRobot::InitializeLinks(
         if (InRootLinks.find(CurLink.GetID()) != InRootLinks.end()) {
           bIsRootLink = true;
         }
-        RobotLinks.insert(CreateLink(CurLink, bIsRootLink, bWithUnrealPhysics));
+
+        const bool bHiddenInGame = CurLink.GetVisual().GetHiddenInGame();
+        const bool bHiddenInSceneCapture =
+            CurLink.GetVisual().GetHiddenInSceneCapture();
+        const bool bIgnoreRobots = CurLink.GetCollision().GetIgnoreRobots();
+
+        bAnyLinkHiddenInGame = bAnyLinkHiddenInGame || bHiddenInGame;
+        bIgnoreRobotCollisions = bIgnoreRobotCollisions || bIgnoreRobots;
+
+        RobotLinks.insert(CreateLink(CurLink, bIsRootLink, bWithUnrealPhysics,
+                                     bHiddenInGame, bHiddenInSceneCapture));
       });
 }
 
 std::pair<std::string, UUnrealRobotLink*> AUnrealRobot::CreateLink(
     const projectairsim::Link& InLink, bool bIsRootLink,
-    bool bWithUnrealPhysics) {
+    bool bWithUnrealPhysics, bool bHiddenInGame,
+    bool bHiddenInSceneCapture) {
   auto Id = InLink.GetID();
 
   auto NewLink = NewObject<UUnrealRobotLink>(this, Id.c_str());
-  NewLink->Initialize(InLink, bWithUnrealPhysics);
+  NewLink->Initialize(InLink, bWithUnrealPhysics, bHiddenInGame,
+                      bHiddenInSceneCapture);
 
   if (bIsRootLink) {
     RobotRootLink = NewLink;
@@ -532,6 +548,17 @@ void AUnrealRobot::BeginPlay() {
                          Hit);
         });
   }
+
+  if (bIgnoreRobotCollisions) {
+    for (TActorIterator<AUnrealRobot> It(GetWorld()); It; ++It) {
+        AUnrealRobot* OtherRobot = *It;
+        if ((OtherRobot != nullptr) && (OtherRobot != this)) {
+            if (RobotRootLink != nullptr) {
+                RobotRootLink->MoveIgnoreActors.AddUnique(OtherRobot);
+            }
+        }
+    }
+}
 
   // Register callbacks for secondary links that want explicit ground collision
   // checks

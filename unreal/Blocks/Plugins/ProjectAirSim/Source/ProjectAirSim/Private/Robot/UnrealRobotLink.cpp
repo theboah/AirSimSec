@@ -32,7 +32,9 @@ UUnrealRobotLink::UUnrealRobotLink(const FObjectInitializer& ObjectInitializer)
 }
 
 void UUnrealRobotLink::Initialize(const projectairsim::Link& Link,
-                                  bool with_unreal_physics) {
+                                  bool with_unreal_physics,
+                                  bool sec_HiddenInGame,
+                                  bool sec_HiddenInSceneCapture) {
   // TODO Handle mesh types besides UnrealMesh
   auto mesh = static_cast<const projectairsim::UnrealMesh*>(
       Link.GetVisual().GetGeometry());
@@ -69,6 +71,15 @@ void UUnrealRobotLink::Initialize(const projectairsim::Link& Link,
 
     InitializePose(Link.GetVisual().GetOrigin(),
                    FVector(scale_x_local, scale_y_local, scale_z_local));
+  }
+
+  SetHiddenInGame(sec_HiddenInGame, true);
+  SetHiddenInSceneCapture(sec_HiddenInSceneCapture);
+
+  if (Link.GetCollision().IsCollisionEnabled()) {
+    SetCollisionProfileName(Link.GetCollision().GetIgnoreRobots()
+                                ? TEXT("PhantomDrone")
+                                : TEXT("SimPhysicsActor"));
   }
 
   if (with_unreal_physics) {

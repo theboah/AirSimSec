@@ -32,7 +32,9 @@ def _clone_actor_with_spacing(actor_template, actor_index, spacing_m):
     return actor
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-with open("config.json", "r", encoding="utf-8") as f:
+config_path = os.path.join(script_dir, "config.json")
+
+with open(config_path, "r", encoding="utf-8") as f:
     config = json.load(f)
 
 env_num = int(config.get("env_num", 1))
@@ -93,26 +95,20 @@ monitor_dir = config.get("monitor_log_dir")
 monitor_file = None
 if monitor_dir:
     os.makedirs(monitor_dir, exist_ok=True)
-    monitor_file = os.path.join(monitor_dir, "vec_monitor_eval.csv")
+    monitor_file = os.path.join(monitor_dir, "vec_monitor.csv")
 env = VecMonitor(env, filename=monitor_file)
 
 env = VecTransposeImage(env)
 
-model = PPO.load("a_none_parra_t1.zip", env=env, device="cuda")
+# Load existing model instead of creating a new one
+model = PPO.load("a_gps_jam_h1_t1.zip", env=env, device="cuda")
 
 try:
-    obs = env.reset()
-    for i in range(20_000):
-        action, _ = model.predict(obs, deterministic=True)
-        obs, rewards, dones, infos = env.step(action)
-        if i % 1000 == 0:
-            print(f"Step {i}, reward: {rewards}, done: {dones}")
+    # Keep training from where it left off
+    model.learn(total_timesteps=75_600, progress_bar=True, reset_num_timesteps=False)
 
-        # Render using the underlying gym env, bypassing SB3 VecEnv tile_images logic
-        env.env_method("render")
-
-        if dones.any():
-            obs = env.reset()
+    # Save back (same name to overwrite, or new name for versioning)
+    model.save("a_gps_jam_h1_t1")
 finally:
     env.close()
     client.disconnect()

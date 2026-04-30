@@ -22,6 +22,8 @@ class Collision {
 
   bool IsCollisionEnabled() const;
 
+  bool GetIgnoreRobots() const;
+
   float GetRestitution() const;
 
   float GetFriction() const;

@@ -1,6 +1,8 @@
 {
-    "scene_config_path": "G:\\Repos\\AirSimSec\\sec\\v3\\scene_basic_drone.jsonc",
+    "scene_config_path": "G:\\Repos\\AirSimSec\\sec\\v3",
     "scene_filename": "scene_basic_drone.jsonc",
+    "env_num": 10,
+    "total_timesteps": 1000000,
     "dt": 0.1,
     "reward_reference_dt": 0.2,
     "step_limit": 4000,

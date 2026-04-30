@@ -112,6 +112,9 @@ class Constant {
     static constexpr const char* inertial = "inertial";
     static constexpr const char* collision = "collision";
     static constexpr const char* visual = "visual";
+    static constexpr const char* hidden_in_game = "hidden_in_game";
+    static constexpr const char* hidden_in_scene_capture =
+        "hidden_in_scene_capture";
     static constexpr const char* mass = "mass";
     static constexpr const char* clamp_input = "clamp_input";
     static constexpr const char* clamp_output = "clamp_output";
@@ -150,6 +153,7 @@ class Constant {
     static constexpr const char* continuous = "continuous";
     static constexpr const char* parent_link = "parent-link";
     static constexpr const char* child_link = "child-link";
+    static constexpr const char* ignore_robots = "ignore_robots";
     static constexpr const char* limit = "limit";
     static constexpr const char* axis = "axis";
     static constexpr const char* parent_dominates = "parent-dominates";

@@ -27,6 +27,10 @@ class Visual {
 
   const Geometry* GetGeometry() const;
 
+  bool GetHiddenInGame() const;
+
+  bool GetHiddenInSceneCapture() const;
+
   const Material& GetMaterial() const;
 
   // RefFrame accessors--the conversion operators allow this object to be passed
