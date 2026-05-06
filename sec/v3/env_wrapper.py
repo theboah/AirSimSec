@@ -100,7 +100,7 @@ class AirSimEnv(gym.Env):
             shape=self.action_shape,
             dtype=np.float32,
         )
-        obs_shape = config.get("observation_image_shape", [128, 128, 3])
+        obs_shape = config.get("observation_image_shape", [84, 84, 3])
         self.obs_image_height = int(obs_shape[0])
         self.obs_image_width = int(obs_shape[1])
         self.obs_image_channels = int(obs_shape[2])
@@ -116,10 +116,10 @@ class AirSimEnv(gym.Env):
                     ),
                     dtype=np.uint8,
                 ),
-                "pose": spaces.Box(
+                "gps": spaces.Box(
                     low=-np.inf,
                     high=np.inf,
-                    shape=(4,),
+                    shape=(9,),
                     dtype=np.float32,
                 ),
                 "goal_vector": spaces.Box(
@@ -137,8 +137,9 @@ class AirSimEnv(gym.Env):
         
         #Attacks
         self.min_reset_before_attacks = int(config.get("min_reset_before_attacks", 5000))
-        self.attacks = load_attacks_from_config(config.get("attacks", []))
-        #self.attacks = []
+        self.attacks = []
+        if config.get("attacks_enabled", False):
+            self.attacks = load_attacks_from_config(config.get("attacks", []))
         
         #Reward and penalties
         self.progress_reward_scale = float(config.get("progress_reward_scale", 1.0))
@@ -198,11 +199,12 @@ class AirSimEnv(gym.Env):
         self.accept_collision_events = True
         state = self.get_state()
         self.prev_goal_distance = self._goal_distance(state)
-        pose = [0.0, 0.0, 0.0, 0.0] if state.pose is None else state.pose.to_list()
+        
         goal_vector = self._goal_vector_as_list(state.goal_vector)
+        gps_vector = self._gps_msg_to_list(self.gps_msg)
         obs = {
             "rgb_image": state.img,
-            "pose": np.asarray(pose, dtype=np.float32),
+            "gps": np.asarray(gps_vector, dtype=np.float32),
             "goal_vector": np.asarray(goal_vector, dtype=np.float32),
         }
         self.episode_index += 1
@@ -264,10 +266,9 @@ class AirSimEnv(gym.Env):
         observed_info = copy.deepcopy(ground_truth_info)
         
         #OBSERVED INFO
-        #attack observed info here
-        if self.reset_num >= self.min_reset_before_attacks:
-            for attack in self.attacks:
-                observed_info = attack.attack_sim(self.step_num, observed_info)  
+        #attack observed info here 
+        for attack in self.attacks:
+            observed_info = attack.attack_sim(self.episode_index, observed_info)  
         
         #TRUE INFO
         true_current_goal_distance = self._goal_distance(ground_truth_info)
@@ -310,15 +311,16 @@ class AirSimEnv(gym.Env):
         )
         info = {
             "status": "Running",
-            "gps_position": observed_info.gps_position,
+            "gps_msg": observed_info.gps_msg,
+            "gps_raw": ground_truth_info.gps_msg,
             "gps_displacement_to_goal": observed_info.goal_vector,
             "goal_coords": self.goal_gps_coords,
         }
-        pose = [0.0, 0.0, 0.0, 0.0] if observed_info.pose is None else observed_info.pose.to_list()
         goal_vector = self._goal_vector_as_list(observed_info.goal_vector)
+        gps_vector = self._gps_msg_to_list(observed_info.gps_msg)
         next_obs = {
             "rgb_image": observed_info.img,
-            "pose": np.asarray(pose, dtype=np.float32),
+            "gps": np.asarray(gps_vector, dtype=np.float32),
             "goal_vector": np.asarray(goal_vector, dtype=np.float32),
         }
         return (next_obs, reward, terminated, timeout, info)
@@ -333,8 +335,6 @@ class AirSimEnv(gym.Env):
     def get_state(self):
         (actor_x, actor_y, actor_z, _, _, actor_yaw) = self.get_vec_from_pose(self.actor.get_ground_truth_pose())
         drone_pose = Pose(actor_x, actor_y, actor_z, actor_yaw)
-        
-        gps_position = self.get_gps_position(self.gps_msg)
 
         # Calculate goal_vector in local NED coordinates (meters)
         if self.goal_local_ned is None:
@@ -342,7 +342,7 @@ class AirSimEnv(gym.Env):
         else:
             goal_vector = [actor_x - self.goal_local_ned[0], actor_y - self.goal_local_ned[1],actor_z - self.goal_local_ned[2]]
 
-        self.state = State(drone_pose, self._get_processed_rgb_image(self.img_msg), gps_position, goal_vector)
+        self.state = State(drone_pose, self._get_processed_rgb_image(self.img_msg), self.gps_msg, goal_vector)
         return self.state
 
     def get_reward(
@@ -397,6 +397,23 @@ class AirSimEnv(gym.Env):
         if isinstance(goal_vector, (list, tuple)):
             return list(goal_vector)
         return [float(goal_vector[0]), float(goal_vector[1]), float(goal_vector[2])]
+
+    def _gps_msg_to_list(self, gps_msg):
+        if gps_msg is None:
+            return [0.0] * 9
+
+        velocity = gps_msg.get("velocity", {}) if isinstance(gps_msg, dict) else {}
+        return [
+            float(gps_msg.get("latitude", 0.0)),
+            float(gps_msg.get("longitude", 0.0)),
+            float(gps_msg.get("altitude", 0.0)),
+            float(gps_msg.get("epv", 0.0)),
+            float(gps_msg.get("eph", 0.0)),
+            float(gps_msg.get("fix_type", 0.0)),
+            float(velocity.get("x", 0.0)),
+            float(velocity.get("y", 0.0)),
+            float(velocity.get("z", 0.0)),
+        ]
 
     #Callbacks
     def _ensure_subscriptions(self):
@@ -455,19 +472,6 @@ class AirSimEnv(gym.Env):
             if topic is not None:
                 return topic
         return None
-
-    def get_gps_position(self, gps_msg):
-        if gps_msg is None:
-            return None
-        latitude = gps_msg.get("latitude")
-        longitude = gps_msg.get("longitude")
-        altitude = gps_msg.get("altitude")
-        if latitude is None or longitude is None or altitude is None:
-            return None
-        
-        pos = GPSPosition(latitude, longitude, altitude)
-        
-        return pos
         
     def callback_collision(self, collision_info):
         self.collision_info = collision_info

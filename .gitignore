@@ -380,3 +380,6 @@ env/
 
 # AirSimSec
 events.out.tfevents.*
+unreal/Blocks/Samples/PixelStreaming/**
+*_tmp.json
+*_tmp.jsonc

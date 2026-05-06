@@ -325,11 +325,11 @@
       "capture-settings": [
         {
           "image-type": 0,
-          "width": 128,
-          "height": 128,
+          "width": 84,
+          "height": 84,
           "fov-degrees": 90,
           "capture-enabled": true,
-          "streaming-enabled": true,
+          "streaming-enabled": false,
           "pixels-as-float": false,
           "compress": false,
           "target-gamma": 2.5
@@ -364,7 +364,11 @@
       "id": "GPS",
       "type": "gps",
       "enabled": true,
-      "parent-link": "Frame"
+      "parent-link": "Frame",
+      "eph-initial": 0.1,
+      "eph-final": 0.1,
+      "epv-initial": 0.1,
+      "epv-final": 0.1
     }
   ]
 }

@@ -18,9 +18,9 @@ class GPSPosition:
         return [self.lat, self.long, self.alt]
 
 class State:
-    def __init__(self, drone_pose, img, gps_position, goal_vector):
+    def __init__(self, drone_pose, img, gps_msg, goal_vector):
         self.pose = drone_pose
         self.img = img
-        self.gps_position = gps_position
+        self.gps_msg = gps_msg
         self.goal_vector = goal_vector
     
