@@ -317,7 +317,7 @@
       "type": "camera",
       "enabled": true,
       "parent-link": "Frame",
-      "capture-interval": 0.001,
+      "capture-interval": 0.5,
       "origin": {
         "xyz": "0.4 0.0 0.0",
         "rpy-deg": "0 0 0"
@@ -329,7 +329,7 @@
           "height": 84,
           "fov-degrees": 90,
           "capture-enabled": true,
-          "streaming-enabled": false,
+          "streaming-enabled": true,
           "pixels-as-float": false,
           "compress": false,
           "target-gamma": 2.5

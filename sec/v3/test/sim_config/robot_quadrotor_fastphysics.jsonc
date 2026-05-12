@@ -25,9 +25,12 @@
       },
       "collision": {
         "restitution": 0.1,
-        "friction": 0.5
+        "friction": 0.5,
+        "ignore_robots": true
       },
       "visual": {
+        "hidden_in_game": true,
+        "hidden_in_scene_capture": true,
         "geometry": {
           "type": "unreal_mesh",
           "name": "/Drone/Quadrotor1"
@@ -57,6 +60,8 @@
         }
       },
       "visual": {
+        "hidden_in_game": true,
+        "hidden_in_scene_capture": true,
         "origin": {
           "xyz": "0.253 -0.253 -0.01",
           "rpy-deg": "0 0 0"
@@ -90,6 +95,8 @@
         }
       },
       "visual": {
+        "hidden_in_game": true,
+        "hidden_in_scene_capture": true,
         "origin": {
           "xyz": "0.253 0.253 -0.01",
           "rpy-deg": "0 0 0"
@@ -123,6 +130,8 @@
         }
       },
       "visual": {
+        "hidden_in_game": true,
+        "hidden_in_scene_capture": true,
         "origin": {
           "xyz": "-0.253 -0.253 -0.01",
           "rpy-deg": "0 0 0"
@@ -156,6 +165,8 @@
         }
       },
       "visual": {
+        "hidden_in_game": true,
+        "hidden_in_scene_capture": true,
         "origin": {
           "xyz": "-0.253 0.253 -0.01",
           "rpy-deg": "0 0 0"
@@ -302,16 +313,20 @@
   ],
   "sensors": [
     {
-      "id": "Chase",
+      "id": "ForwardViewCamera",
       "type": "camera",
-      "enabled": false,
+      "enabled": true,
       "parent-link": "Frame",
-      "capture-interval": 0.03,
+      "capture-interval": 0.1,
+      "origin": {
+        "xyz": "0.4 0.0 0.0",
+        "rpy-deg": "0 0 0"
+      },
       "capture-settings": [
         {
           "image-type": 0,
-          "width": 1280,
-          "height": 720,
+          "width": 84,
+          "height": 84,
           "fov-degrees": 90,
           "capture-enabled": true,
           "streaming-enabled": true,
@@ -325,91 +340,6 @@
         "lock-pitch": true,
         "lock-yaw": false
       },
-      "origin": {
-        "xyz": "-10.0 0.0 -1.0",
-        "rpy-deg": "0 -11.46 0"
-      }
-    },
-    {
-      "id": "DownCamera",
-      "type": "camera",
-      "enabled": true,
-      "parent-link": "Frame",
-      "capture-interval": 0.03,
-      "capture-settings": [
-        {
-          "image-type": 0,  // scene camera
-          "width": 168,
-          "height": 94,
-          "fov-degrees": 90,
-          "capture-enabled": true,
-          "streaming-enabled": false,
-          "pixels-as-float": false,
-          "compress": false,
-          "target-gamma": 2.5
-        },
-        {
-          "image-type": 1,  // depth planar
-          "width": 168,
-          "height": 94,
-          "fov-degrees": 90,
-          "capture-enabled": false,
-          "streaming-enabled": false,
-          "pixels-as-float": true,
-          "compress": false
-        },
-        {
-          "image-type": 2,  // depth perspective
-          "width": 168,
-          "height": 94,
-          "fov-degrees": 90,
-          "capture-enabled": false,
-          "streaming-enabled": false,
-          "pixels-as-float": true,
-          "compress": false
-        },
-        {
-          "image-type": 3,  // segmentation
-          "width": 168,
-          "height": 94,
-          "fov-degrees": 90,
-          "capture-enabled": false,
-          "streaming-enabled": false,
-          "pixels-as-float": false,
-          "compress": false
-        },
-        {
-          "image-type": 4,  // depth vis
-          "width": 168,
-          "height": 94,
-          "fov-degrees": 90,
-          "capture-enabled": false,
-          "streaming-enabled": false,
-          "pixels-as-float": false,
-          "compress": false,
-          "max-depth-meters": 100
-        },
-        {
-          "image-type": 5,  // disparity normalized
-          "width": 168,
-          "height": 94,
-          "fov-degrees": 90,
-          "capture-enabled": false,
-          "streaming-enabled": false,
-          "pixels-as-float": false,
-          "compress": false
-        },
-        {
-          "image-type": 6,  // surface normals
-          "width": 168,
-          "height": 94,
-          "fov-degrees": 90,
-          "capture-enabled": false,
-          "streaming-enabled": false,
-          "pixels-as-float": false,
-          "compress": false
-        }
-      ],
       "noise-settings": [
         {
           "enabled": false,
@@ -428,47 +358,17 @@
           "horz-distortion-contrib": 1.0,
           "horz-distortion-strength": 0.002
         }
-      ],
-      "origin": {
-        "xyz": "0 0.0 0.0",
-        "rpy-deg": "0 -90 0"
-      }
-    },
-    {
-      "id": "IMU1",
-      "type": "imu",
-      "enabled": true,
-      "parent-link": "Frame",
-      "accelerometer": {
-        "velocity-random-walk": 2.353e-3,
-        "tau": 800,
-        "bias-stability": 3.53e-4,
-        "turn-on-bias": "0 0 0"
-      },
-      "gyroscope": {
-        "angle-random-walk": 8.72644e-5,
-        "tau": 500,
-        "bias-stability": 2.23014e-5,
-        "turn-on-bias": "0 0 0"
-      }
+      ]
     },
     {
       "id": "GPS",
       "type": "gps",
-      "enabled": false,
-      "parent-link": "Frame"
-    },
-    {
-      "id": "Barometer",
-      "type": "barometer",
-      "enabled": false,
-      "parent-link": "Frame"
-    },
-    {
-      "id": "Magnetometer",
-      "type": "magnetometer",
-      "enabled": false,
-      "parent-link": "Frame"
+      "enabled": true,
+      "parent-link": "Frame",
+      "eph-initial": 0.1,
+      "eph-final": 0.1,
+      "epv-initial": 0.1,
+      "epv-final": 0.1
     }
   ]
 }

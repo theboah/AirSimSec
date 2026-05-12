@@ -1,1 +1,0 @@
-#Reads attack plan config and sets up fault injection module to be used during training or eval.

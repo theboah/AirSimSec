@@ -1,0 +1,59 @@
+{
+    "model_name": "default_1msteps_model",
+    "scene_config_name": "scene_basic_drone.jsonc",
+    "num_envs": 2,
+    "total_timesteps": 1000000,
+    "action_duration_s": 0.5,
+    "step_limit": 4000,
+    "step_penalty": -0.1,
+    "goal_reached_bonus": 100,
+    "collision_penalty": -100,
+    "attacks_enabled": false,
+    "start_settings":{
+        "n_min":-1,
+        "n_max":8,
+        "e_min":-8,
+        "e_max":8,
+        "d": -4,
+        "randomize_yaw": true,
+        "yaw_min_rad": -3.14159265,
+        "yaw_max_rad": 3.14159265
+    },
+    "limits":{
+        "north": [-150, 150],
+        "east": [-150, 150],
+        "down": [0, -150]
+    },
+    "goal_tolerance": 0.1,
+    "goals":[
+        {"n": 47.6735,"e":-38.748, "d": -4 },
+        {"n": 20.7996,"e": -106.35, "d": -4 },
+        {"n": -46.888,"e": -132.94, "d": -4 },
+        {"n": 96.9813,"e": -90.922, "d": -4 },
+        {"n": 99.1936,"e": -29.647, "d": -4 },
+        {"n": 101.72,"e": 42.7592, "d": -4 },
+        {"n": 126.40,"e": 94.2726, "d": -4 },
+        {"n": 45.7464,"e": 30.381, "d": -4 },
+        {"n": 39.75,"e": 104.376, "d": -4 },
+        {"n": -29.854,"e": 75.5936, "d": -4 }
+    ],
+    "attacks": [
+        {
+            "type": "gps_jam_noise",
+            "probability": 0.5,
+            "duration_min": 10,
+            "duration_max": 50,
+            "start_ep_min": 15,
+            "attack_pos": {
+                "lat": 47.64140000,
+                "long": -122.14015000,
+                "alt": 132.0
+            },
+            "eph_min_3d": 3,
+            "eph_min_2d": 4,
+            "default": 0.1,
+            "attack_range_m": 10
+        }
+    ]
+}
+    
